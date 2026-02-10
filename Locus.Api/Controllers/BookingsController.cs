@@ -17,33 +17,31 @@ namespace Locus.Api.Controllers
             _context = context;
         }
 
-        // GET: api/Bookings (For Issue #3: History & Search)
-       [HttpGet]
+ [HttpGet]
 public async Task<ActionResult<IEnumerable<BookingResponse>>> GetBookings(
     [FromQuery] string? name, 
     [FromQuery] BookingStatus? status)
 {
-    // 1. Create a query that includes Room details
     var query = _context.Bookings.Include(b => b.Room).AsQueryable();
 
-    // 2. Add Filter: If 'name' is provided, search BookerName
-    if (!string.IsNullOrEmpty(name))
+    // Fix 1: Handle null or empty name with case-insensitive search
+    if (!string.IsNullOrWhiteSpace(name))
     {
-        query = query.Where(b => b.BookerName.Contains(name));
+        // Use ILike (Postgres specific) or ToLower for universal support
+        query = query.Where(b => b.BookerName.ToLower().Contains(name.ToLower()));
     }
 
-    // 3. Add Filter: If 'status' is provided, filter by that state
+    // Fix 2: Explicitly check the enum value
     if (status.HasValue)
     {
         query = query.Where(b => b.Status == status.Value);
     }
 
-    // 4. Transform to Response DTO and execute
     var results = await query.Select(b => new BookingResponse
     {
         Id = b.Id,
         RoomId = b.RoomId,
-        RoomName = b.Room.Name,
+        RoomName = b.Room != null ? b.Room.Name : "Unknown Room", // Safety check
         BookerName = b.BookerName,
         StartTime = b.StartTime,
         EndTime = b.EndTime,
@@ -53,7 +51,6 @@ public async Task<ActionResult<IEnumerable<BookingResponse>>> GetBookings(
 
     return Ok(results);
 }
-
         // PATCH: api/Bookings/{id}/status (For Issue #2: Approval Workflow)
         [HttpPatch("{id}/status")]
         public async Task<IActionResult> UpdateStatus(int id, [FromBody] UpdateBookingStatusRequest request)
