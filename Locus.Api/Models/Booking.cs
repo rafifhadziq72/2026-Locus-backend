@@ -7,7 +7,7 @@ namespace Locus.Api.Models
         Pending,
         Approved,
         Rejected,
-        Cancelled
+        Cancelled,
     }
 
     public class Booking
@@ -39,5 +39,7 @@ namespace Locus.Api.Models
 
         // Navigation property to link back to the Room
         public virtual Room Room { get; set; } = null!;
+
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
 }
