@@ -1,25 +1,27 @@
 using Locus.Api.Data;
-using Microsoft.EntityFrameworkCore;
 using Locus.Api.Data.Seeders;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services
 builder.Services.AddControllers();
 
-// Use the traditional Swashbuckle instead of .NET 10's AddOpenApi
+// Use traditional Swashbuckle for Swagger documentation
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "Locus API", Version = "v1" });
 });
 
+// Database Configuration
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
+);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -33,13 +35,14 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.MapControllers();
 
-// Seeder Logic
+// Seeder Logic - Consolidated into one robust block
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
-    try 
+    try
     {
         var context = services.GetRequiredService<ApplicationDbContext>();
+        // Automatically applies any pending migrations and seeds the rooms
         DatabaseSeeder.SeedRooms(context);
     }
     catch (Exception ex)
@@ -50,8 +53,3 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

@@ -25,8 +25,10 @@ namespace Locus.Api.Models
         public bool IsDeleted { get; set; } = false;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        
+
         // Navigation property for Bookings
         public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
+
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
 }
