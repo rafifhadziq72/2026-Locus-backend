@@ -4,24 +4,39 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 1. Define the CORS policy name
+var allowFrontend = "_allowFrontend";
+
 // Add services
 builder.Services.AddControllers();
 
-// Use traditional Swashbuckle for Swagger documentation
+// 2. Add CORS service
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(
+        name: allowFrontend,
+        policy =>
+        {
+            policy
+                .WithOrigins("http://localhost:5173") // Your React/Vite URL
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        }
+    );
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "Locus API", Version = "v1" });
 });
 
-// Database Configuration
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -32,17 +47,24 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+// 3. Enable CORS in the pipeline
+// It must be placed after UseRouting (if used) and before MapControllers
+app.UseCors(allowFrontend);
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
 app.UseHttpsRedirection();
 app.MapControllers();
 
-// Seeder Logic - Consolidated into one robust block
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     try
     {
         var context = services.GetRequiredService<ApplicationDbContext>();
-        // Automatically applies any pending migrations and seeds the rooms
         DatabaseSeeder.SeedRooms(context);
     }
     catch (Exception ex)
