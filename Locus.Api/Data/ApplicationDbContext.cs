@@ -1,9 +1,11 @@
 using Locus.Api.Models;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore; // Required for Identity
 using Microsoft.EntityFrameworkCore;
 
 namespace Locus.Api.Data
 {
-    public class ApplicationDbContext : DbContext
+    // Inherit from IdentityDbContext to enable User and Role management
+    public class ApplicationDbContext : IdentityDbContext
     {
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
             : base(options) { }
@@ -13,20 +15,18 @@ namespace Locus.Api.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            // Crucial: Call the base method to configure Identity tables
             base.OnModelCreating(modelBuilder);
 
-            // Global Query Filters (keeps deleted items hidden from GET)
             modelBuilder.Entity<Room>().HasQueryFilter(r => !r.IsDeleted);
             modelBuilder.Entity<Booking>().HasQueryFilter(b => !b.IsDeleted);
 
-            // Set Default Values for new records
             modelBuilder.Entity<Room>().Property(r => r.IsDeleted).HasDefaultValue(false);
             modelBuilder.Entity<Booking>().Property(b => b.IsDeleted).HasDefaultValue(false);
 
             modelBuilder.Entity<Room>().HasIndex(r => r.RoomNumber).IsUnique();
         }
 
-        // Industry Standard: Auto-update Timestamps
         public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
             var entries = ChangeTracker
@@ -35,7 +35,6 @@ namespace Locus.Api.Data
 
             foreach (var entityEntry in entries)
             {
-                // Use 'dynamic' or check if property exists to prevent the crash you saw
                 if (entityEntry.Entity is Booking || entityEntry.Entity is Room)
                 {
                     entityEntry.Property("UpdatedAt").CurrentValue = DateTime.UtcNow;
