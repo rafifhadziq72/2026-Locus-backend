@@ -6,11 +6,19 @@ using Microsoft.AspNetCore.Identity; // Required
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens; // Required
 
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
 var builder = WebApplication.CreateBuilder(args);
 var allowFrontend = "_allowFrontend";
 
-builder.Services.AddControllers();
-
+builder
+    .Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(
+            new System.Text.Json.Serialization.JsonStringEnumConverter()
+        );
+    });
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(

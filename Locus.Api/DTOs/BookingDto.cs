@@ -1,5 +1,5 @@
-using Locus.Api.Models;
 using System.ComponentModel.DataAnnotations;
+using Locus.Api.Models;
 
 namespace Locus.Api.DTOs
 {
@@ -7,18 +7,21 @@ namespace Locus.Api.DTOs
     {
         [Required]
         public int RoomId { get; set; }
+
         [Required]
         public string BookerName { get; set; } = string.Empty;
+
         [Required]
         [EmailAddress]
         public string BookerEmail { get; set; } = string.Empty;
+
         [Required]
         public DateTime StartTime { get; set; }
+
         [Required]
         public DateTime EndTime { get; set; }
     }
 
-    // NEW: DTO for updating status
     public class UpdateBookingStatusRequest
     {
         [Required]

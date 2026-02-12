@@ -35,10 +35,8 @@ namespace Locus.Api.Controllers
                 query = query.Where(b => b.Status == status.Value);
             }
 
-            // 1. Fetch to list first to bring data into application memory
             var bookings = await query.ToListAsync();
 
-            // 2. Map to Response DTO in memory so .ToString() works for the Enum
             var results = bookings
                 .Select(b => new BookingResponse
                 {
@@ -48,7 +46,7 @@ namespace Locus.Api.Controllers
                     BookerName = b.BookerName,
                     StartTime = b.StartTime,
                     EndTime = b.EndTime,
-                    Status = b.Status.ToString(), // Will now display "Approved", "Pending", etc.
+                    Status = b.Status.ToString(),
                     RejectionReason = b.RejectionReason,
                 })
                 .ToList();
@@ -65,19 +63,17 @@ namespace Locus.Api.Controllers
             var booking = await _context
                 .Bookings.IgnoreQueryFilters()
                 .FirstOrDefaultAsync(b => b.Id == id);
+
             if (booking == null)
                 return NotFound();
 
-            // NEW: Validation for Approval
             if (request.Status == BookingStatus.Approved)
             {
                 var isAlreadyOccupied = await _context.Bookings.AnyAsync(b =>
                     b.RoomId == booking.RoomId
                     && b.Id != id
-                    && // Don't check against itself
-                    b.Status == BookingStatus.Approved
-                    && // Check for other Approved ones
-                    booking.StartTime < b.EndTime
+                    && b.Status == BookingStatus.Approved
+                    && booking.StartTime < b.EndTime
                     && booking.EndTime > b.StartTime
                 );
 
@@ -107,7 +103,6 @@ namespace Locus.Api.Controllers
             if (!roomExists)
                 return BadRequest("Room does not exist.");
 
-            // Strict Overlap Validation: Prevents overlapping for ANY active booking
             var isOverlapping = await _context.Bookings.AnyAsync(b =>
                 b.RoomId == request.RoomId
                 && b.IsDeleted == false
