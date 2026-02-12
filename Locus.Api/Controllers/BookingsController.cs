@@ -23,22 +23,21 @@ namespace Locus.Api.Controllers
             [FromQuery] BookingStatus? status
         )
         {
-            var query = _context.Bookings.Include(b => b.Room).AsQueryable();
+            // Filter out Soft Deleted records
+            var query = _context
+                .Bookings.Include(b => b.Room)
+                .Where(b => !b.IsDeleted)
+                .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(name))
-            {
                 query = query.Where(b => b.BookerName.ToLower().Contains(name.ToLower()));
-            }
 
             if (status.HasValue)
-            {
                 query = query.Where(b => b.Status == status.Value);
-            }
 
             var bookings = await query.ToListAsync();
-
-            var results = bookings
-                .Select(b => new BookingResponse
+            return Ok(
+                bookings.Select(b => new BookingResponse
                 {
                     Id = b.Id,
                     RoomId = b.RoomId,
@@ -47,11 +46,8 @@ namespace Locus.Api.Controllers
                     StartTime = b.StartTime,
                     EndTime = b.EndTime,
                     Status = b.Status.ToString(),
-                    RejectionReason = b.RejectionReason,
                 })
-                .ToList();
-
-            return Ok(results);
+            );
         }
 
         [HttpPatch("{id}/status")]
@@ -60,10 +56,7 @@ namespace Locus.Api.Controllers
             [FromBody] UpdateBookingStatusRequest request
         )
         {
-            var booking = await _context
-                .Bookings.IgnoreQueryFilters()
-                .FirstOrDefaultAsync(b => b.Id == id);
-
+            var booking = await _context.Bookings.FirstOrDefaultAsync(b => b.Id == id);
             if (booking == null)
                 return NotFound();
 
@@ -75,22 +68,64 @@ namespace Locus.Api.Controllers
                     && b.Status == BookingStatus.Approved
                     && booking.StartTime < b.EndTime
                     && booking.EndTime > b.StartTime
+                    && !b.IsDeleted
                 );
 
                 if (isAlreadyOccupied)
-                {
-                    return BadRequest(
-                        "Cannot approve this booking because the room is already occupied by another approved booking during this time."
-                    );
-                }
+                    return BadRequest("Room occupied during this time.");
             }
 
             booking.Status = request.Status;
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
 
-            if (request.Status == BookingStatus.Rejected)
-            {
-                booking.RejectionReason = request.Reason;
-            }
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateBooking(
+            int id,
+            [FromBody] CreateBookingRequest request
+        )
+        {
+            var booking = await _context.Bookings.FirstOrDefaultAsync(b => b.Id == id);
+            if (booking == null)
+                return NotFound();
+
+            // 1. Force conversion to UTC before validation
+            var startUtc = DateTime.SpecifyKind(request.StartTime, DateTimeKind.Utc);
+            var endUtc = DateTime.SpecifyKind(request.EndTime, DateTimeKind.Utc);
+
+            // 2. Validate for overlaps using the UTC dates
+            var isOverlapping = await _context.Bookings.AnyAsync(b =>
+                b.RoomId == request.RoomId
+                && b.Id != id
+                && !b.IsDeleted
+                && startUtc < b.EndTime
+                && endUtc > b.StartTime
+            );
+
+            if (isOverlapping)
+                return BadRequest("The updated time slot overlaps with another existing booking.");
+
+            // 3. Update the record
+            booking.BookerName = request.BookerName;
+            booking.BookerEmail = request.BookerEmail;
+            booking.StartTime = startUtc;
+            booking.EndTime = endUtc;
+            booking.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            return Ok(new { Message = "Booking updated successfully." });
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteBooking(int id)
+        {
+            var booking = await _context.Bookings.FirstOrDefaultAsync(b => b.Id == id);
+            if (booking == null)
+                return NotFound();
+
+            booking.IsDeleted = true;
+            booking.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
             return NoContent();
@@ -99,40 +134,29 @@ namespace Locus.Api.Controllers
         [HttpPost]
         public async Task<ActionResult<BookingResponse>> CreateBooking(CreateBookingRequest request)
         {
-            var roomExists = await _context.Rooms.AnyAsync(r => r.Id == request.RoomId);
-            if (!roomExists)
-                return BadRequest("Room does not exist.");
-
             var isOverlapping = await _context.Bookings.AnyAsync(b =>
                 b.RoomId == request.RoomId
-                && b.IsDeleted == false
+                && !b.IsDeleted
                 && request.StartTime < b.EndTime
                 && request.EndTime > b.StartTime
             );
 
             if (isOverlapping)
-            {
-                return BadRequest(
-                    "This room is already reserved or has a pending request for the selected time slot."
-                );
-            }
+                return BadRequest("Room already reserved.");
 
             var booking = new Booking
             {
                 RoomId = request.RoomId,
                 BookerName = request.BookerName,
                 BookerEmail = request.BookerEmail,
-                StartTime = request.StartTime,
-                EndTime = request.EndTime,
+                StartTime = DateTime.SpecifyKind(request.StartTime, DateTimeKind.Utc),
+                EndTime = DateTime.SpecifyKind(request.EndTime, DateTimeKind.Utc),
                 Status = BookingStatus.Pending,
             };
 
             _context.Bookings.Add(booking);
             await _context.SaveChangesAsync();
-
-            return Ok(
-                new { Message = "Booking request submitted successfully.", BookingId = booking.Id }
-            );
+            return Ok(new { Message = "Booking created.", BookingId = booking.Id });
         }
     }
 }
