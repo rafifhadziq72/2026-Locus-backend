@@ -23,10 +23,9 @@ namespace Locus.Api.Controllers
             [FromQuery] BookingStatus? status
         )
         {
-            // Filter out Soft Deleted records
+            // Initializing query without the IsDeleted filter to show full history
             var query = _context
                 .Bookings.Include(b => b.Room)
-                .Where(b => !b.IsDeleted)
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(name))
@@ -62,20 +61,28 @@ namespace Locus.Api.Controllers
 
             if (request.Status == BookingStatus.Approved)
             {
+                // Force comparison to UTC to match PostgreSQL +07 offset behavior
+                var start = booking.StartTime.ToUniversalTime();
+                var end = booking.EndTime.ToUniversalTime();
+
                 var isAlreadyOccupied = await _context.Bookings.AnyAsync(b =>
                     b.RoomId == booking.RoomId
                     && b.Id != id
                     && b.Status == BookingStatus.Approved
-                    && booking.StartTime < b.EndTime
-                    && booking.EndTime > b.StartTime
+                    && start < b.EndTime.ToUniversalTime() 
+                    && end > b.StartTime.ToUniversalTime()
                     && !b.IsDeleted
                 );
 
                 if (isAlreadyOccupied)
-                    return BadRequest("Room occupied during this time.");
+                    return BadRequest(
+                        "Conflict: This room is already approved for another user during this time slot."
+                    );
             }
 
             booking.Status = request.Status;
+            booking.UpdatedAt = DateTime.UtcNow;
+
             await _context.SaveChangesAsync();
             return NoContent();
         }
@@ -90,23 +97,20 @@ namespace Locus.Api.Controllers
             if (booking == null)
                 return NotFound();
 
-            // 1. Force conversion to UTC before validation
-            var startUtc = DateTime.SpecifyKind(request.StartTime, DateTimeKind.Utc);
-            var endUtc = DateTime.SpecifyKind(request.EndTime, DateTimeKind.Utc);
+            var startUtc = request.StartTime.ToUniversalTime();
+            var endUtc = request.EndTime.ToUniversalTime();
 
-            // 2. Validate for overlaps using the UTC dates
             var isOverlapping = await _context.Bookings.AnyAsync(b =>
                 b.RoomId == request.RoomId
                 && b.Id != id
                 && !b.IsDeleted
-                && startUtc < b.EndTime
-                && endUtc > b.StartTime
+                && startUtc < b.EndTime.ToUniversalTime()
+                && endUtc > b.StartTime.ToUniversalTime()
             );
 
             if (isOverlapping)
                 return BadRequest("The updated time slot overlaps with another existing booking.");
 
-            // 3. Update the record
             booking.BookerName = request.BookerName;
             booking.BookerEmail = request.BookerEmail;
             booking.StartTime = startUtc;
@@ -134,29 +138,26 @@ namespace Locus.Api.Controllers
         [HttpPost]
         public async Task<ActionResult<BookingResponse>> CreateBooking(CreateBookingRequest request)
         {
-            var isOverlapping = await _context.Bookings.AnyAsync(b =>
-                b.RoomId == request.RoomId
-                && !b.IsDeleted
-                && request.StartTime < b.EndTime
-                && request.EndTime > b.StartTime
-            );
-
-            if (isOverlapping)
-                return BadRequest("Room already reserved.");
-
             var booking = new Booking
             {
                 RoomId = request.RoomId,
                 BookerName = request.BookerName,
                 BookerEmail = request.BookerEmail,
-                StartTime = DateTime.SpecifyKind(request.StartTime, DateTimeKind.Utc),
-                EndTime = DateTime.SpecifyKind(request.EndTime, DateTimeKind.Utc),
+                StartTime = request.StartTime.ToUniversalTime(),
+                EndTime = request.EndTime.ToUniversalTime(),
                 Status = BookingStatus.Pending,
             };
 
             _context.Bookings.Add(booking);
             await _context.SaveChangesAsync();
-            return Ok(new { Message = "Booking created.", BookingId = booking.Id });
+
+            return Ok(
+                new
+                {
+                    Message = "Booking request submitted and is pending approval.",
+                    BookingId = booking.Id,
+                }
+            );
         }
     }
 }
