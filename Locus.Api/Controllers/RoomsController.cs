@@ -1,15 +1,14 @@
 using Locus.Api.Data;
 using Locus.Api.DTOs;
 using Locus.Api.Models;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace Locus.Api.Controllers
 {
-    [Authorize]
     [ApiController]
     [Route("api/[controller]")]
+    // REMOVED [Authorize] to allow public view
     public class RoomsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
