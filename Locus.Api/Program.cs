@@ -1,10 +1,10 @@
 using System.Text;
 using Locus.Api.Data;
 using Locus.Api.Data.Seeders;
-using Microsoft.AspNetCore.Authentication.JwtBearer; // Required
-using Microsoft.AspNetCore.Identity; // Required
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens; // Required
+using Microsoft.IdentityModel.Tokens;
 
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
@@ -19,6 +19,7 @@ builder
             new System.Text.Json.Serialization.JsonStringEnumConverter()
         );
     });
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(
@@ -34,47 +35,19 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
-// --- START IDENTITY & JWT CONFIGURATION ---
+// Identity configuration remains for DB consistency
 builder
     .Services.AddIdentity<IdentityUser, IdentityRole>(options =>
     {
-        // Development-friendly settings (Simpler Passwords)
         options.Password.RequireDigit = false;
-        options.Password.RequiredLength = 4; // Min 4 characters instead of 8
+        options.Password.RequiredLength = 4;
         options.Password.RequireNonAlphanumeric = false;
         options.Password.RequireUppercase = false;
         options.Password.RequireLowercase = false;
-
-        // Ensure unique emails
         options.User.RequireUniqueEmail = true;
     })
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
-
-var jwtSettings = builder.Configuration.GetSection("Jwt");
-var key = Encoding.ASCII.GetBytes(jwtSettings["Key"] ?? "A_Very_Long_Secret_Key_For_Testing_Only");
-
-builder
-    .Services.AddAuthentication(options =>
-    {
-        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-    })
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtSettings["Issuer"],
-            ValidAudience = jwtSettings["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(key),
-        };
-    });
-
-// --- END IDENTITY & JWT CONFIGURATION ---
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -96,9 +69,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors(allowFrontend);
 
-// Order is critical here
-app.UseAuthentication();
-app.UseAuthorization();
+// AUTHENTICATION BYPASS: Commented out to allow public access to Web views
+// app.UseAuthentication();
+// app.UseAuthorization();
 
 if (!app.Environment.IsDevelopment())
 {
@@ -113,6 +86,7 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var context = services.GetRequiredService<ApplicationDbContext>();
+        // FIXED: Using your actual method name "SeedRooms"
         DatabaseSeeder.SeedRooms(context);
     }
     catch (Exception ex)
